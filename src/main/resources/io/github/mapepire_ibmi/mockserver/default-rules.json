@@ -1,0 +1,141 @@
+{
+  "sql": [
+    {
+      "pattern": "select\\s+\\*\\s+from\\s+sysibm\\.sysdummy1",
+      "columns": [
+        { "name": "IBMREQD", "type": "CHAR", "precision": 1, "nullable": 0, "table": "SYSDUMMY1" }
+      ],
+      "rows": [ ["Y"] ]
+    },
+    {
+      "pattern": "select\\s+count\\(\\*\\)\\s+as\\s+thecount\\s+from\\s+qsys2\\.db_transaction_info\\b.*",
+      "columns": [
+        { "name": "THECOUNT", "type": "INTEGER", "nullable": 0 }
+      ],
+      "rows": [ [0] ]
+    },
+    {
+      "pattern": "select\\s+\\*\\s+from\\s+sample\\.department",
+      "columns": [
+        { "name": "DEPTNO", "type": "CHAR", "precision": 3, "nullable": 0, "table": "DEPARTMENT" },
+        { "name": "DEPTNAME", "type": "VARCHAR", "precision": 36, "nullable": 0, "table": "DEPARTMENT" },
+        { "name": "MGRNO", "type": "CHAR", "precision": 6, "table": "DEPARTMENT" },
+        { "name": "ADMRDEPT", "type": "CHAR", "precision": 3, "nullable": 0, "table": "DEPARTMENT" },
+        { "name": "LOCATION", "type": "CHAR", "precision": 16, "table": "DEPARTMENT" }
+      ],
+      "rows": [
+        ["A00", "SPIFFY COMPUTER SERVICE DIV.", "000010", "A00", null],
+        ["B01", "PLANNING", "000020", "A00", null],
+        ["C01", "INFORMATION CENTER", "000030", "A00", null],
+        ["D01", "DEVELOPMENT CENTER", null, "A00", null],
+        ["D11", "MANUFACTURING SYSTEMS", "000060", "D01", null],
+        ["D21", "ADMINISTRATION SYSTEMS", "000070", "D01", null],
+        ["E01", "SUPPORT SERVICES", "000050", "A00", null],
+        ["E11", "OPERATIONS", "000090", "E01", null],
+        ["E21", "SOFTWARE SUPPORT", "000100", "E01", null],
+        ["F22", "BRANCH OFFICE F2", null, "E01", null],
+        ["G22", "BRANCH OFFICE G2", null, "E01", null],
+        ["H22", "BRANCH OFFICE H2", null, "E01", null],
+        ["I22", "BRANCH OFFICE I2", null, "E01", null],
+        ["J22", "BRANCH OFFICE J2", null, "E01", null]
+      ]
+    },
+    {
+      "pattern": "select\\s+\\*\\s+from\\s+sample\\.department\\s+where\\s+admrdept\\s*=\\s*\\?",
+      "parameters": ["A00"],
+      "columns": [
+        { "name": "DEPTNO", "type": "CHAR", "precision": 3, "nullable": 0, "table": "DEPARTMENT" },
+        { "name": "DEPTNAME", "type": "VARCHAR", "precision": 36, "nullable": 0, "table": "DEPARTMENT" },
+        { "name": "MGRNO", "type": "CHAR", "precision": 6, "table": "DEPARTMENT" },
+        { "name": "ADMRDEPT", "type": "CHAR", "precision": 3, "nullable": 0, "table": "DEPARTMENT" },
+        { "name": "LOCATION", "type": "CHAR", "precision": 16, "table": "DEPARTMENT" }
+      ],
+      "rows": [
+        ["A00", "SPIFFY COMPUTER SERVICE DIV.", "000010", "A00", null],
+        ["B01", "PLANNING", "000020", "A00", null],
+        ["C01", "INFORMATION CENTER", "000030", "A00", null],
+        ["D01", "DEVELOPMENT CENTER", null, "A00", null],
+        ["E01", "SUPPORT SERVICES", "000050", "A00", null]
+      ]
+    },
+    {
+      "pattern": "select\\s+\\*\\s+from\\s+sample\\.department\\s+where\\s+admrdept\\s*=\\s*\\?",
+      "parameters": ["E01"],
+      "columns": [
+        { "name": "DEPTNO", "type": "CHAR", "precision": 3, "nullable": 0, "table": "DEPARTMENT" },
+        { "name": "DEPTNAME", "type": "VARCHAR", "precision": 36, "nullable": 0, "table": "DEPARTMENT" },
+        { "name": "MGRNO", "type": "CHAR", "precision": 6, "table": "DEPARTMENT" },
+        { "name": "ADMRDEPT", "type": "CHAR", "precision": 3, "nullable": 0, "table": "DEPARTMENT" },
+        { "name": "LOCATION", "type": "CHAR", "precision": 16, "table": "DEPARTMENT" }
+      ],
+      "rows": [
+        ["E11", "OPERATIONS", "000090", "E01", null],
+        ["E21", "SOFTWARE SUPPORT", "000100", "E01", null],
+        ["F22", "BRANCH OFFICE F2", null, "E01", null],
+        ["G22", "BRANCH OFFICE G2", null, "E01", null],
+        ["H22", "BRANCH OFFICE H2", null, "E01", null],
+        ["I22", "BRANCH OFFICE I2", null, "E01", null],
+        ["J22", "BRANCH OFFICE J2", null, "E01", null]
+      ]
+    },
+    {
+      "pattern": "select\\s+\\*\\s+from\\s+sample\\.department\\s+where\\s+admrdept\\s*=\\s*\\?",
+      "columns": [
+        { "name": "DEPTNO", "type": "CHAR", "precision": 3, "nullable": 0, "table": "DEPARTMENT" },
+        { "name": "DEPTNAME", "type": "VARCHAR", "precision": 36, "nullable": 0, "table": "DEPARTMENT" },
+        { "name": "MGRNO", "type": "CHAR", "precision": 6, "table": "DEPARTMENT" },
+        { "name": "ADMRDEPT", "type": "CHAR", "precision": 3, "nullable": 0, "table": "DEPARTMENT" },
+        { "name": "LOCATION", "type": "CHAR", "precision": 16, "table": "DEPARTMENT" }
+      ],
+      "rows": []
+    },
+    {
+      "pattern": "(insert\\s+into|update|delete\\s+from)\\s+sample\\.department\\b.*",
+      "update_count": 1
+    }
+  ],
+  "cl": [
+    {
+      "pattern": "crtlib\\b.*",
+      "success": true,
+      "messages": [
+        { "id": "CPC2102", "type": "COMPLETION", "severity": 0, "text": "Library created." }
+      ]
+    },
+    {
+      "pattern": "(badcmd|notacmd)\\b.*",
+      "success": false,
+      "messages": [
+        { "id": "CPD0030", "type": "DIAGNOSTIC", "severity": 30, "text": "Command not found in library list." },
+        { "id": "CPF0006", "type": "ESCAPE", "severity": 30, "text": "Errors occurred in command." }
+      ]
+    },
+    {
+      "pattern": "dltlib\\s+(lib\\()?\\s*nosuchlib\\b.*",
+      "success": false,
+      "messages": [
+        { "id": "CPF2110", "type": "ESCAPE", "severity": 40, "text": "Library NOSUCHLIB not found." }
+      ]
+    },
+    {
+      "pattern": ".*",
+      "success": true,
+      "messages": [
+        { "id": "CPC0000", "type": "COMPLETION", "severity": 0, "text": "Command completed by the Mapepire mock server." }
+      ]
+    }
+  ],
+  "visual_explain": {
+    "columns": [
+      { "name": "NODE_ID", "type": "INTEGER", "nullable": 0 },
+      { "name": "PARENT_ID", "type": "INTEGER" },
+      { "name": "NODE_TYPE", "type": "VARCHAR", "precision": 64, "nullable": 0 },
+      { "name": "DESCRIPTION", "type": "VARCHAR", "precision": 256 },
+      { "name": "ESTIMATED_COST", "type": "DECIMAL", "precision": 15, "scale": 3 }
+    ],
+    "rows": [
+      [1, null, "Final Select", "Mock Visual Explain plan produced by the Mapepire mock server", 0.010],
+      [2, 1, "Table Scan", "Mock table scan", 0.008]
+    ]
+  }
+}

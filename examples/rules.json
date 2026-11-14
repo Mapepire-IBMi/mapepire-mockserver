@@ -1,0 +1,56 @@
+{
+  "include_defaults": true,
+  "sql": [
+    {
+      "pattern": "select\\s+id,\\s*name\\s+from\\s+myapp\\.customers",
+      "columns": [
+        { "name": "ID", "type": "INTEGER", "nullable": 0, "table": "CUSTOMERS" },
+        { "name": "NAME", "type": "VARCHAR", "precision": 50, "table": "CUSTOMERS" }
+      ],
+      "rows": [
+        [1, "Alice"],
+        { "ID": 2, "NAME": "Bob" },
+        { "ID": 3 }
+      ]
+    },
+    {
+      "pattern": "select\\s+name\\s+from\\s+myapp\\.customers\\s+where\\s+id\\s*=\\s*\\?",
+      "parameters": [1],
+      "columns": [ { "name": "NAME", "type": "VARCHAR", "precision": 50 } ],
+      "rows": [ ["Alice"] ]
+    },
+    {
+      "pattern": "insert\\s+into\\s+myapp\\.customers\\b.*",
+      "update_count": 1
+    },
+    {
+      "pattern": "call\\s+myapp\\.get_total\\(\\?\\)",
+      "update_count": 0,
+      "output_parms": [
+        { "index": 1, "type": "DECIMAL", "precision": 11, "scale": 2, "name": "TOTAL", "value": 1234.50 }
+      ]
+    },
+    {
+      "pattern": "drop\\s+table\\s+myapp\\..*",
+      "error": { "message": "[SQL0551] Not authorized to object.", "sql_state": "42501", "sql_rc": -551 }
+    },
+    {
+      "pattern": "select\\s+\\*\\s+from\\s+myapp\\.slow_view",
+      "columns": [ { "name": "X", "type": "INTEGER" } ],
+      "rows": [ [1] ],
+      "delay_ms": 5000
+    }
+  ],
+  "cl": [
+    {
+      "pattern": "chgjob\\b.*",
+      "success": true,
+      "messages": [ { "id": "CPC1234", "type": "COMPLETION", "text": "Job changed." } ]
+    },
+    {
+      "pattern": "dltobj\\b.*",
+      "success": false,
+      "messages": [ { "id": "CPF2105", "type": "ESCAPE", "severity": 40, "text": "Object not found." } ]
+    }
+  ]
+}
