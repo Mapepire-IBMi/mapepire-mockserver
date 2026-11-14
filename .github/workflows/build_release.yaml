@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  # Needed to create the tag and the release
+  contents: write
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v7
+      name: Check out
+
+    - name: Set up JDK 8
+      uses: actions/setup-java@v6
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Get Maven project version
+      # exec-maven-plugin 3.6.1 is the newest release that still runs on Java 8
+      run: |
+        echo "project_version=$(mvn -q -Dexec.executable="echo" -Dexec.args='${project.version}' --non-recursive org.codehaus.mojo:exec-maven-plugin:3.6.1:exec  --file pom.xml)" >> $GITHUB_ENV
+        cat $GITHUB_ENV
+
+    - name: Run tests
+      # Runs the standalone tests and the tests that use the Mapepire Java client. A failure stops the
+      # workflow here, so a release is only published from a build that passes them.
+      run: mvn -B test --file pom.xml
+
+    - name: Upload test reports
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: test-reports
+        path: target/surefire-reports
+        if-no-files-found: ignore
+
+    - name: Build with Maven (Java 8)
+      # The tests already ran in the previous step
+      run: mvn -B package -DskipTests --file pom.xml
+
+    - name: List target directory
+      run: ls -l target
+
+    - name: Rename the runnable JAR file
+      run: mv target/mapepire-mockserver-${{ env.project_version }}-jar-with-dependencies.jar mapepire-mockserver-v${{ env.project_version }}.jar
+
+    - name: Create the tag and release
+      uses: softprops/action-gh-release@v3
+      with:
+        tag_name: v${{ env.project_version }}
+        name: v${{ env.project_version }}
+        files: |
+          mapepire-mockserver-v${{ env.project_version }}.jar
+        fail_on_unmatched_files: true
