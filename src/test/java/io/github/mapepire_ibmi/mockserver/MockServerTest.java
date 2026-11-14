@@ -40,40 +40,36 @@ class MockServerTest {
     }
 
     /**
-     * Without configured credentials any well-formed Basic header is accepted, but one is still required.
-     *
-     * @throws Exception
-     *             if the test cannot communicate with the server
-     */
-    @Test
-    void testAnyCredentialsAccepted() throws Exception {
-        try (final MockServer server = start(new MockServerConfig().setSecure(false))) {
-            final TestWebSocketClient client = TestWebSocketClient.connect(server, TestWebSocketClient.basicAuth("anyone", "anything"));
-            assertTrue(client.request(PING).get("alive").getAsBoolean());
-            client.closeBlocking();
-            final HashMap<String, String> bearer = new HashMap<String, String>();
-            bearer.put("Authorization", "Bearer abc");
-            assertTrue(TestWebSocketClient.isRejected(server, "/db/", bearer));
-        }
-    }
-
-    /**
-     * Connections with valid credentials are accepted; others are refused during the upgrade.
+     * Only the two mock accounts are accepted. User profiles are matched ignoring case; passwords are
+     * case-sensitive. Anything else is refused during the upgrade.
      *
      * @throws Exception
      *             if the test cannot communicate with the server
      */
     @Test
     void testAuthentication() throws Exception {
-        try (final MockServer server = start(new MockServerConfig().setSecure(false).setCredentials("MOCKUSER", "s3cret".toCharArray()))) {
-            final TestWebSocketClient ok = TestWebSocketClient.connect(server, TestWebSocketClient.basicAuth("mockuser", "s3cret"));
-            assertTrue(ok.request(PING).get("success").getAsBoolean());
-            ok.closeBlocking();
-
-            assertTrue(TestWebSocketClient.isRejected(server, "/db/", TestWebSocketClient.basicAuth("MOCKUSER", "wrong")));
-            assertTrue(TestWebSocketClient.isRejected(server, "/db/", TestWebSocketClient.basicAuth("OTHER", "s3cret")));
+        try (final MockServer server = start(new MockServerConfig().setSecure(false))) {
+            for (final String[] creds : new String[][] { { "MOCK", "mockingbird" }, { "mock", "mockingbird" }, { "MOCK2", "mockeroni" }, { "Mock2", "mockeroni" } }) {
+                final TestWebSocketClient client = TestWebSocketClient.connect(server, TestWebSocketClient.basicAuth(creds[0], creds[1]));
+                assertTrue(client.request(PING).get("success").getAsBoolean());
+                client.closeBlocking();
+            }
+            //@formatter:off
+            final String[][] rejected = {
+                    { "MOCK", "MOCKINGBIRD" },    // passwords are case-sensitive
+                    { "MOCK", "mockeroni" },      // the other account's password
+                    { "MOCK2", "mockingbird" },
+                    { "MOCK3", "mockingbird" },   // no such user
+                    { "anyone", "anything" },
+                    { "MOCK", "" } };
+            //@formatter:on
+            for (final String[] creds : rejected) {
+                assertTrue(TestWebSocketClient.isRejected(server, "/db/", TestWebSocketClient.basicAuth(creds[0], creds[1])), creds[0] + "/" + creds[1]);
+            }
             assertTrue(TestWebSocketClient.isRejected(server, "/db/", new HashMap<String, String>()));
-            assertTrue(TestWebSocketClient.isRejected(server, "/db/", TestWebSocketClient.basicAuth("MOCKUSER", "")));
+            final HashMap<String, String> bearer = new HashMap<String, String>();
+            bearer.put("Authorization", "Bearer abc");
+            assertTrue(TestWebSocketClient.isRejected(server, "/db/", bearer));
         }
     }
 
@@ -86,8 +82,8 @@ class MockServerTest {
     @Test
     void testConnectionsAreIndependent() throws Exception {
         try (final MockServer server = start(new MockServerConfig().setSecure(false))) {
-            final TestWebSocketClient first = TestWebSocketClient.connect(server, TestWebSocketClient.basicAuth("u", "p"));
-            final TestWebSocketClient second = TestWebSocketClient.connect(server, TestWebSocketClient.basicAuth("u", "p"));
+            final TestWebSocketClient first = TestWebSocketClient.connect(server);
+            final TestWebSocketClient second = TestWebSocketClient.connect(server);
             final String firstJob = first.request("{\"id\":\"1\",\"type\":\"connect\"}").get("job").getAsString();
             final String secondJob = second.request("{\"id\":\"1\",\"type\":\"connect\"}").get("job").getAsString();
             assertNotEquals(firstJob, secondJob);
@@ -109,7 +105,7 @@ class MockServerTest {
     @Test
     void testExitClosesConnection() throws Exception {
         try (final MockServer server = start(new MockServerConfig().setSecure(false))) {
-            final TestWebSocketClient client = TestWebSocketClient.connect(server, TestWebSocketClient.basicAuth("u", "p"));
+            final TestWebSocketClient client = TestWebSocketClient.connect(server);
             final JsonObject reply = client.request("{\"id\":\"99\",\"type\":\"exit\"}");
             assertEquals("99", reply.get("id").getAsString());
             assertTrue(reply.get("success").getAsBoolean());
@@ -126,7 +122,7 @@ class MockServerTest {
     @Test
     void testRulesCanChangeWhileRunning() throws Exception {
         try (final MockServer server = start(new MockServerConfig().setSecure(false).setDatabase(new MockDatabase(false)))) {
-            final TestWebSocketClient client = TestWebSocketClient.connect(server, TestWebSocketClient.basicAuth("u", "p"));
+            final TestWebSocketClient client = TestWebSocketClient.connect(server);
             final String query = "{\"id\":\"q%d\",\"type\":\"sql\",\"sql\":\"SELECT * FROM SYSIBM.SYSDUMMY1\"}";
             assertFalse(client.request(String.format(query, 1)).get("success").getAsBoolean());
             server.getDatabase().addSqlRule(SqlRule.resultSet("select \\* from sysibm\\.sysdummy1", MockResultSet.fromJson(new JsonArray(), null)));
@@ -145,7 +141,7 @@ class MockServerTest {
     void testSecureByDefault() throws Exception {
         try (final MockServer server = start(new MockServerConfig())) {
             assertTrue(server.getUri().startsWith("wss://localhost:"));
-            final TestWebSocketClient client = TestWebSocketClient.connect(server, TestWebSocketClient.basicAuth("u", "p"));
+            final TestWebSocketClient client = TestWebSocketClient.connect(server);
             final JsonObject reply = client.request(PING);
             assertEquals("p1", reply.get("id").getAsString());
             assertTrue(reply.get("success").getAsBoolean());
@@ -153,7 +149,7 @@ class MockServerTest {
 
             // Rejecting a TLS connection must not disturb the server (see Java-WebSocket issue #190)
             assertTrue(TestWebSocketClient.isRejected(server, "/db/", new HashMap<String, String>()));
-            final TestWebSocketClient after = TestWebSocketClient.connect(server, TestWebSocketClient.basicAuth("u", "p"));
+            final TestWebSocketClient after = TestWebSocketClient.connect(server);
             assertTrue(after.request(PING).get("success").getAsBoolean());
             after.closeBlocking();
         }
@@ -183,8 +179,8 @@ class MockServerTest {
     @Test
     void testWrongPathRejected() throws Exception {
         try (final MockServer server = start(new MockServerConfig().setSecure(false))) {
-            assertTrue(TestWebSocketClient.isRejected(server, "/other/", TestWebSocketClient.basicAuth("u", "p")));
-            final TestWebSocketClient client = TestWebSocketClient.create(server, "/db", TestWebSocketClient.basicAuth("u", "p"));
+            assertTrue(TestWebSocketClient.isRejected(server, "/other/", TestWebSocketClient.mockAuth()));
+            final TestWebSocketClient client = TestWebSocketClient.create(server, "/db", TestWebSocketClient.mockAuth());
             assertTrue(client.connectBlocking(10, TimeUnit.SECONDS));
             client.closeBlocking();
         }

@@ -66,6 +66,19 @@ public class TestWebSocketClient extends WebSocketClient {
     }
 
     /**
+     * Connect to a running mock server, as the {@link MockServerConfig#MOCK_USER} account.
+     *
+     * @param _server
+     *            the server
+     * @return the connected client
+     * @throws Exception
+     *             if the connection cannot be established
+     */
+    public static TestWebSocketClient connect(final MockServer _server) throws Exception {
+        return connect(_server, mockAuth());
+    }
+
+    /**
      * Connect to a running mock server, trusting its bundled certificate when it uses TLS.
      *
      * @param _server
@@ -154,6 +167,10 @@ public class TestWebSocketClient extends WebSocketClient {
             return false;
         }
         return CloseFrame.POLICY_VALIDATION == client.getCloseCode();
+    }
+
+    public static Map<String, String> mockAuth() {
+        return basicAuth(MockServerConfig.MOCK_USER, MockServerConfig.MOCK_PASSWORD);
     }
 
     public boolean awaitClosed() throws InterruptedException {

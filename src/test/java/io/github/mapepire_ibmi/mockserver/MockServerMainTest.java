@@ -52,25 +52,28 @@ class MockServerMainTest {
     }
 
     /**
-     * Credentials can be given on the command line, or with the password in the environment.
+     * Only the two mock accounts are accepted, and there are no options to configure others.
      *
      * @throws IOException
      *             never
      */
     @Test
     void testCredentials() throws IOException {
-        final MockServerConfig config = parse("--user", "bob", "--password", "pw");
-        assertEquals("bob", config.getUser());
-        assertTrue(config.isAuthorized("BOB", "pw".toCharArray()));
-        assertFalse(config.isAuthorized("BOB", "nope".toCharArray()));
-
-        final Map<String, String> env = Collections.singletonMap("MP_MOCK_PASSWORD", "envpw");
-        assertTrue(parse(env, "--user", "bob").isAuthorized("bob", "envpw".toCharArray()));
-        assertThrows(IllegalArgumentException.class, () -> parse("--user", "bob"));
+        final MockServerConfig config = parse();
+        assertTrue(config.isAuthorized("MOCK", "mockingbird".toCharArray()));
+        assertTrue(config.isAuthorized("mock", "mockingbird".toCharArray()));
+        assertTrue(config.isAuthorized("MOCK2", "mockeroni".toCharArray()));
+        assertTrue(config.isAuthorized("mOcK2", "mockeroni".toCharArray()));
+        assertFalse(config.isAuthorized("MOCK", "Mockingbird".toCharArray()));
+        assertFalse(config.isAuthorized("MOCK2", "mockingbird".toCharArray()));
+        assertFalse(config.isAuthorized("anyone", "anything".toCharArray()));
+        assertFalse(config.isAuthorized(null, "mockingbird".toCharArray()));
+        assertFalse(config.isAuthorized("MOCK", null));
+        assertThrows(IllegalArgumentException.class, () -> parse("--user", "bob", "--password", "pw"));
     }
 
     /**
-     * With no options, the server listens securely on the default port and accepts any credentials.
+     * With no options, the server listens securely on the default port.
      *
      * @throws IOException
      *             never
@@ -81,8 +84,6 @@ class MockServerMainTest {
         assertEquals(7892, config.getPort());
         assertEquals(MockServerConfig.DEFAULT_PORT, config.getPort());
         assertTrue(config.isSecure());
-        assertNull(config.getUser());
-        assertTrue(config.isAuthorized("anyone", "anything".toCharArray()));
         assertNull(config.getConsole());
         assertNull(config.getKeyStoreFile());
     }

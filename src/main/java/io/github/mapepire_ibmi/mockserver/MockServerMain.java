@@ -22,12 +22,13 @@ public final class MockServerMain {
             "      --keystore <file>          Keystore holding the TLS certificate (default: bundled self-signed certificate)",
             "      --keystore-password <pw>   Keystore password (or the MP_MOCK_KEYSTORE_PASSWORD environment variable)",
             "      --keystore-type <type>     Keystore type (default: PKCS12)",
-            "      --user <user>              Only accept this user (default: accept any credentials)",
-            "      --password <password>      Password required with --user (or the MP_MOCK_PASSWORD environment variable)",
             "  -r, --rules <file>             JSON file of SQL and CL rules (see README)",
             "  -v, --verbose                  Echo all trace records to standard output",
             "      --version                  Print the version and exit",
-            "  -h, --help                     Print this help and exit");
+            "  -h, --help                     Print this help and exit",
+            "",
+            "Clients must authenticate as MOCK (password: mockingbird) or MOCK2 (password: mockeroni).",
+            "User profiles are not case-sensitive; passwords are.");
 
     private MockServerMain() {
     }
@@ -94,8 +95,6 @@ public final class MockServerMain {
         if ("true".equalsIgnoreCase(_env.get("MP_UNSECURE"))) {
             ret.setSecure(false);
         }
-        String user = null;
-        String password = _env.get("MP_MOCK_PASSWORD");
         File keyStoreFile = null;
         String keyStorePassword = _env.get("MP_MOCK_KEYSTORE_PASSWORD");
         String keyStoreType = "PKCS12";
@@ -121,12 +120,6 @@ public final class MockServerMain {
                 case "--keystore-type":
                     keyStoreType = getValue(_args, ++i, arg);
                     break;
-                case "--user":
-                    user = getValue(_args, ++i, arg);
-                    break;
-                case "--password":
-                    password = getValue(_args, ++i, arg);
-                    break;
                 case "-r":
                 case "--rules":
                     ret.setDatabase(MockDatabase.fromFile(new File(getValue(_args, ++i, arg))));
@@ -138,12 +131,6 @@ public final class MockServerMain {
                 default:
                     throw new IllegalArgumentException("Unknown option: " + arg);
             }
-        }
-        if (null != user) {
-            if (null == password) {
-                throw new IllegalArgumentException("--user requires --password (or MP_MOCK_PASSWORD)");
-            }
-            ret.setCredentials(user, password.toCharArray());
         }
         if (null != keyStoreFile) {
             if (null == keyStorePassword) {
