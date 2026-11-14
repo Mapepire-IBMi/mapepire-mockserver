@@ -1,0 +1,4 @@
+# Keep line endings as LF everywhere (see CODING_CONVENTIONS_JAVA.md in mapepire-server, section 1.1)
+* text=auto eol=lf
+*.p12 binary
+*.jks binary
