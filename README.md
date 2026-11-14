@@ -1,5 +1,10 @@
 # Mapepire Mock Server
 
+> [!WARNING]
+> **This project is experimental.** It is not a supported Mapepire component. Its behavior, command-line
+> options, rule format, and Java API may change or break between versions without notice. Use it for development
+> and testing only, never in production, and don't rely on it matching the real Mapepire server in every detail.
+
 A standalone, self-contained mock of the [Mapepire server](https://github.com/Mapepire-IBMi/mapepire-server).
 It speaks the [Mapepire WebSocket protocol](https://github.com/Mapepire-IBMi/mapepire-protocol) and answers
 requests from a set of configurable rules instead of a real IBM i system and Db2 database.
@@ -9,7 +14,7 @@ on any machine, in CI, or anywhere an IBM i is not available.
 
 - Listens on port **7892** by default, at `wss://<host>:7892/db/`.
 - Uses TLS by default, with a bundled self-signed certificate for `localhost`. Plain `ws://` is available with `--unsecure`.
-- Requires HTTP Basic authentication on the WebSocket upgrade, as the real server does. It accepts any credentials unless you configure a specific user.
+- Requires HTTP Basic authentication on the WebSocket upgrade, as the real server does. Only two built-in accounts are accepted (see [Authentication](#authentication)).
 - Supports every request type the real server handles (see [Protocol coverage](#protocol-coverage)).
 - Built-in sample data (`SAMPLE.DEPARTMENT`, `SYSIBM.SYSDUMMY1`, and more), plus your own rules from a JSON file or from code.
 - Java 8 or later. The only runtime dependencies are Gson and Java-WebSocket (and its no-op SLF4J binding), all packaged into one jar.
@@ -44,13 +49,25 @@ Options:
       --keystore <file>          Keystore holding the TLS certificate (default: bundled self-signed certificate)
       --keystore-password <pw>   Keystore password (or the MP_MOCK_KEYSTORE_PASSWORD environment variable)
       --keystore-type <type>     Keystore type (default: PKCS12)
-      --user <user>              Only accept this user (default: accept any credentials)
-      --password <password>      Password required with --user (or the MP_MOCK_PASSWORD environment variable)
   -r, --rules <file>             JSON file of SQL and CL rules (see below)
   -v, --verbose                  Echo all trace records to standard output
       --version                  Print the version and exit
   -h, --help                     Print this help and exit
 ```
+
+### Authentication
+
+The mock server accepts exactly two accounts:
+
+| User profile | Password |
+|---|---|
+| `MOCK` | `mockingbird` |
+| `MOCK2` | `mockeroni` |
+
+As on IBM i, user profiles are **not** case-sensitive (`mock` and `Mock2` work), but passwords **are**
+(`Mockingbird` is rejected). Any other credentials, a missing `Authorization` header, or a scheme other than
+Basic cause the WebSocket upgrade to be refused. The accounts can't be changed, and in code they are available
+as `MockServerConfig.MOCK_USER`, `MOCK_PASSWORD`, `MOCK2_USER`, and `MOCK2_PASSWORD`.
 
 ### Connecting a client
 
@@ -61,10 +78,10 @@ and is valid for `localhost`, `127.0.0.1`, and `::1`. With mapepire-java:
 
 ```java
 // Skip verification
-DaemonServer creds = new DaemonServer("localhost", 7892, "MOCKUSER", "anything", false);
+DaemonServer creds = new DaemonServer("localhost", 7892, "MOCK", "mockingbird", false);
 
 // Or verify against the mock server's certificate
-DaemonServer verified = new DaemonServer("localhost", 7892, "MOCKUSER", "anything", true, pemText);
+DaemonServer verified = new DaemonServer("localhost", 7892, "MOCK", "mockingbird", true, pemText);
 
 SqlJob job = new SqlJob();
 job.connect(creds).get();
@@ -79,15 +96,14 @@ The server can run inside a JVM, for example in a JUnit test:
 
 ```java
 MockServerConfig config = new MockServerConfig()
-        .setPort(0)                                  // pick a free port
-        .setCredentials("MOCKUSER", "secret".toCharArray());
+        .setPort(0);                                 // pick a free port
 try (MockServer server = new MockServer(config)) {
     server.getDatabase().addSqlRule(SqlRule.updateCount("delete from myapp\\.orders\\b.*", 3));
     server.getDatabase().addSqlRule(SqlRule.error("select \\* from myapp\\.secret", "[SQL0551] Not authorized.", "42501", -551));
     server.getDatabase().addSqlRule(SqlRule.updateCount("call myapp\\.slow", 0).withDelay(5000));
     server.start();
 
-    // connect a client to server.getUri(), e.g. wss://localhost:54321/db/
+    // connect a client to server.getUri(), e.g. wss://localhost:54321/db/, as MOCK / mockingbird
 }
 ```
 
@@ -201,6 +217,7 @@ what clients actually receive:
 Intentional differences from the real server:
 
 - No SQL is actually executed. Every answer comes from the rules.
+- Credentials are checked against the two fixed mock accounts, not against IBM i user profiles.
 - Each connection gets a made-up job name like `100000/QUSER/QZDASOINIT`. A new `connect` starts a new job and discards that connection's open statements.
 - Tracing is kept in memory only. With `tracedest` set to `FILE`, the reported path is a placeholder and nothing is written to disk.
 - `getcldoc` and `getcmdxml` return placeholder documents.
@@ -212,6 +229,9 @@ Intentional differences from the real server:
 
 - `src/test/java/io/github/mapepire_ibmi/mockserver/`: standalone tests. They use only the mock server and a bare WebSocket client, with no external services.
 - `src/test/java/io/github/mapepire_ibmi/mockserver/client/`: tests that drive the mock server through the official Mapepire Java client ([`mapepire-sdk`](https://central.sonatype.com/artifact/io.github.mapepire-ibmi/mapepire-sdk)). They are tagged `java-client`.
+
+GitHub Actions ([`.github/workflows/jar_dist_ci.yaml`](.github/workflows/jar_dist_ci.yaml)) builds and tests
+every pull request and every commit to `main` on Java 8, and uploads the runnable jar as a build artifact.
 
 ## Coding conventions
 

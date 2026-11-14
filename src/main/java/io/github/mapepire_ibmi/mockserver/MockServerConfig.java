@@ -5,6 +5,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Properties;
 
 /**
@@ -23,7 +27,22 @@ public class MockServerConfig {
     /** The port the mock server listens on by default. */
     public static final int DEFAULT_PORT = 7892;
 
+    /** The password of the {@link #MOCK2_USER} account. Passwords are case-sensitive. */
+    public static final String MOCK2_PASSWORD = "mockeroni";
+
+    /** The second of the two user profiles the mock server accepts. User profiles are not case-sensitive. */
+    public static final String MOCK2_USER = "MOCK2";
+
+    /** The password of the {@link #MOCK_USER} account. Passwords are case-sensitive. */
+    public static final String MOCK_PASSWORD = "mockingbird";
+
+    /** The first of the two user profiles the mock server accepts. User profiles are not case-sensitive. */
+    public static final String MOCK_USER = "MOCK";
+
     private static final String VERSION_RESOURCE = "/io/github/mapepire_ibmi/mockserver/version.properties";
+
+    /** The accepted user profiles, upper-cased, mapped to their passwords. */
+    private static final Map<String, String> s_users = createUsers();
 
     private String m_buildDate;
     private PrintStream m_console = null;
@@ -33,20 +52,29 @@ public class MockServerConfig {
     private File m_keyStoreFile = null;
     private char[] m_keyStorePassword = null;
     private String m_keyStoreType = "PKCS12";
-    private char[] m_password = null;
     private int m_port = DEFAULT_PORT;
-    private String m_user = null;
     private String m_version;
 
     /**
      * Create a configuration with default settings: TLS enabled with the bundled self-signed certificate,
-     * listening on all interfaces on port {@value #DEFAULT_PORT}, accepting any credentials, and answering with
-     * the built-in default rules.
+     * listening on all interfaces on port {@value #DEFAULT_PORT}, and answering with the built-in default rules.
      */
     public MockServerConfig() {
         final Properties versionProps = loadVersionProperties();
         m_version = versionProps.getProperty("version", "0.0.0");
         m_buildDate = versionProps.getProperty("build_date", "unknown");
+    }
+
+    /**
+     * Build the table of accepted user profiles.
+     *
+     * @return the user profiles, upper-cased, mapped to their passwords
+     */
+    private static Map<String, String> createUsers() {
+        final Map<String, String> ret = new HashMap<String, String>();
+        ret.put(MOCK_USER, MOCK_PASSWORD);
+        ret.put(MOCK2_USER, MOCK2_PASSWORD);
+        return Collections.unmodifiableMap(ret);
     }
 
     /**
@@ -107,18 +135,14 @@ public class MockServerConfig {
         return m_port;
     }
 
-    public String getUser() {
-        return m_user;
-    }
-
     public String getVersion() {
         return m_version;
     }
 
     /**
-     * Decide whether a set of credentials is accepted. When no user has been configured, any user with a
-     * non-empty password is accepted. Otherwise the user must match (ignoring case, as IBM i user profiles do)
-     * and the password must match exactly.
+     * Decide whether a set of credentials is accepted. Only two user profiles exist: {@value #MOCK_USER} (password
+     * {@value #MOCK_PASSWORD}) and {@value #MOCK2_USER} (password {@value #MOCK2_PASSWORD}). The user profile is
+     * matched ignoring case, as IBM i user profiles are; the password must match exactly, including case.
      *
      * @param _user
      *            the user from the client's Basic authentication header
@@ -127,10 +151,11 @@ public class MockServerConfig {
      * @return <code>true</code> if the credentials are accepted
      */
     public boolean isAuthorized(final String _user, final char[] _password) {
-        if (null == m_user) {
-            return true;
+        if (null == _user || null == _password) {
+            return false;
         }
-        return m_user.equalsIgnoreCase(_user) && Arrays.equals(m_password, _password);
+        final String expected = s_users.get(_user.toUpperCase(Locale.ROOT));
+        return null != expected && Arrays.equals(expected.toCharArray(), _password);
     }
 
     public boolean isSecure() {
@@ -151,22 +176,6 @@ public class MockServerConfig {
      */
     public MockServerConfig setConsole(final PrintStream _console) {
         m_console = _console;
-        return this;
-    }
-
-    /**
-     * Require clients to authenticate as a specific user. When this is never called, any credentials are
-     * accepted.
-     *
-     * @param _user
-     *            the user profile name; compared ignoring case
-     * @param _password
-     *            the password; compared exactly. The array is copied.
-     * @return this configuration
-     */
-    public MockServerConfig setCredentials(final String _user, final char[] _password) {
-        m_user = _user;
-        m_password = null == _password ? null : _password.clone();
         return this;
     }
 

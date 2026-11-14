@@ -1,0 +1,46 @@
+name: Jar dist CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up JDK 8
+      uses: actions/setup-java@v4
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Get Maven project version
+      run: |
+        echo "project_version=$(mvn -q -Dexec.executable="echo" -Dexec.args='${project.version}' --non-recursive org.codehaus.mojo:exec-maven-plugin:3.1.0:exec  --file pom.xml)" >> $GITHUB_ENV
+        cat $GITHUB_ENV
+
+    - name: Build with Maven
+      run: mvn -B package --file pom.xml
+
+    - name: Create staging directory
+      run: mkdir -p staging/opt/mapepire-mockserver/lib
+
+    - name: Populate staging directory
+      run: |
+        mv target/mapepire-mockserver-${{ env.project_version }}-jar-with-dependencies.jar staging/opt/mapepire-mockserver/lib/mapepire-mockserver.jar
+        cp README.md staging/opt/mapepire-mockserver/
+        cp -r examples staging/opt/mapepire-mockserver/
+
+    - name: Upload dist artifact
+      uses: actions/upload-artifact@v4
+      id: artifact-upload
+      with:
+        name: mapepire-mockserver-${{ env.project_version }}
+        path: staging/opt/mapepire-mockserver
+        if-no-files-found: error

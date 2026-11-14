@@ -61,25 +61,25 @@ import io.github.mapepire_ibmi.types.exceptions.RequestTimeoutException;
 class MapepireJavaClientTest {
 
     private static final String DEPARTMENTS = "SELECT * FROM SAMPLE.DEPARTMENT";
-    private static final String PASSWORD = "mock-password";
+    private static final String PASSWORD = MockServerConfig.MOCK_PASSWORD;
     private static final long REJECTED_CONNECT_WAIT_SECONDS = 3;
     private static final String SLOW_QUERY = "SELECT * FROM MOCK.SLOW";
     private static final long TIMEOUT_SECONDS = 30;
-    private static final String USER = "MOCKUSER";
+    private static final String USER = MockServerConfig.MOCK_USER;
 
     private static MockServer s_server;
 
     private SqlJob m_job;
 
     /**
-     * Start one server for the whole class, with fixed credentials and a deliberately slow statement.
+     * Start one server for the whole class, with a deliberately slow statement.
      *
      * @throws IOException
      *             if the server cannot start
      */
     @BeforeAll
     static void startServer() throws IOException {
-        final MockServerConfig config = new MockServerConfig().setHost("localhost").setPort(0).setCredentials(USER, PASSWORD.toCharArray());
+        final MockServerConfig config = new MockServerConfig().setHost("localhost").setPort(0);
         s_server = new MockServer(config);
         s_server.getDatabase().addSqlRule(SqlRule.updateCount("select \\* from mock\\.slow", 0).withDelay(3000));
         s_server.getDatabase().addClRule(ClRule.failure("sndpgmmsg\\b.*", ClRule.message("CPF9898", "ESCAPE", 40, "Mock escape message.")));
@@ -152,7 +152,8 @@ class MapepireJavaClientTest {
     }
 
     /**
-     * A connection reports a job name and leaves the job ready for work, and closing it ends the job.
+     * A connection reports a job name and leaves the job ready for work, and closing it ends the job. Both mock
+     * accounts can connect.
      *
      * @throws Exception
      *             if the client cannot communicate with the server
@@ -165,7 +166,9 @@ class MapepireJavaClientTest {
         assertEquals(s_server.getConfig().getVersion(), version.getVersion());
 
         final SqlJob other = new SqlJob();
-        final ConnectionResult result = other.connect(credentials(PASSWORD)).get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        // The second account, with the user profile in lower case: profiles are not case-sensitive
+        final DaemonServer mock2 = new DaemonServer("localhost", s_server.getPort(), "mock2", MockServerConfig.MOCK2_PASSWORD, false);
+        final ConnectionResult result = other.connect(mock2).get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
         assertTrue(result.getJob().matches("\\d{6}/QUSER/QZDASOINIT"), result.getJob());
         other.close();
         assertEquals(JobStatus.Ended, other.getStatus());
