@@ -238,3 +238,7 @@ test reports as a `test-reports` artifact (even when tests fail), then builds an
 
 The Java code follows the
 [mapepire-server coding conventions](https://github.com/Mapepire-IBMi/mapepire-server/blob/main/CODING_CONVENTIONS_JAVA.md).
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE).

@@ -49,6 +49,7 @@ jobs:
       run: |
         mv target/mapepire-mockserver-${{ env.project_version }}-jar-with-dependencies.jar staging/opt/mapepire-mockserver/lib/mapepire-mockserver.jar
         cp README.md staging/opt/mapepire-mockserver/
+        cp LICENSE staging/opt/mapepire-mockserver/
         cp -r examples staging/opt/mapepire-mockserver/
 
     - name: Upload dist artifact
