@@ -230,8 +230,9 @@ Intentional differences from the real server:
 - `src/test/java/io/github/mapepire_ibmi/mockserver/`: standalone tests. They use only the mock server and a bare WebSocket client, with no external services.
 - `src/test/java/io/github/mapepire_ibmi/mockserver/client/`: tests that drive the mock server through the official Mapepire Java client ([`mapepire-sdk`](https://central.sonatype.com/artifact/io.github.mapepire-ibmi/mapepire-sdk)). They are tagged `java-client`.
 
-GitHub Actions ([`.github/workflows/jar_dist_ci.yaml`](.github/workflows/jar_dist_ci.yaml)) builds and tests
-every pull request and every commit to `main` on Java 8, and uploads the runnable jar as a build artifact.
+GitHub Actions ([`.github/workflows/jar_dist_ci.yaml`](.github/workflows/jar_dist_ci.yaml)) runs on every pull
+request and every commit to `main`. On Java 8, it runs all the tests (standalone and Java client), uploads the
+test reports as a `test-reports` artifact (even when tests fail), then builds and uploads the runnable jar.
 
 ## Coding conventions
 
