@@ -22,12 +22,12 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 
 /**
- * A real SQL engine behind the mock server: an in-memory SQLite database that runs the statements no rule
+ * The real SQL engine behind the mock server: an in-memory SQLite database that runs every statement no rule
  * answers. Clients can then create schemas and tables, insert rows (including with parameter markers and
  * batches), and query them back with ordinary SQL.
  * <p>
  * The data lives only in memory. Nothing is written to disk, and everything is discarded when the store is
- * closed or the JVM exits.
+ * closed or the JVM exits. A <code>QTEMP</code> schema exists from the start, as it always does on IBM i.
  * <p>
  * SQLite has no schemas, so a few Db2 statements are translated:
  * <ul>
@@ -37,6 +37,7 @@ import com.google.gson.JsonPrimitive;
  * <code>RESTRICT</code>, detaches it and discards its contents.</li>
  * <li><code>COMMIT</code> and <code>ROLLBACK</code> succeed when no transaction is active, as they do on Db2 with
  * autocommit.</li>
+ * <li>An empty statement fails with SQL0104, as it does on Db2.</li>
  * </ul>
  * Everything else is passed to SQLite unchanged, so it must be valid SQLite SQL. SQLite errors are reported with
  * the closest Db2 SQLSTATE and SQL code (for example SQL0204 for a missing table).
@@ -50,6 +51,7 @@ public class MockSqliteStore implements AutoCloseable {
     private static final Pattern s_createSchema = compile("create\\s+(?:schema|collection)\\s+" + IDENTIFIER);
     private static final Pattern s_dropSchema = compile("drop\\s+(?:schema|collection)\\s+" + IDENTIFIER + "(?:\\s+(?:cascade|restrict))?");
     private static final Pattern s_endTransaction = compile("(?:commit|rollback)(?:\\s+work)?(?:\\s+hold)?");
+    private static final String QTEMP = "QTEMP";
     private static final String URL = "jdbc:sqlite::memory:";
 
     private final Connection m_connection;
@@ -65,6 +67,12 @@ public class MockSqliteStore implements AutoCloseable {
         m_connection = new org.sqlite.JDBC().connect(URL, new Properties());
         if (null == m_connection) {
             throw new SQLException("The SQLite driver did not accept " + URL);
+        }
+        try {
+            executeUpdate("ATTACH DATABASE ':memory:' AS " + QTEMP);
+        } catch (final SQLException _e) {
+            m_connection.close();
+            throw _e;
         }
     }
 
@@ -148,6 +156,15 @@ public class MockSqliteStore implements AutoCloseable {
             ret.add(MockColumn.fromJson(column));
         }
         return ret;
+    }
+
+    /**
+     * Build the error Db2 reports for an empty statement.
+     *
+     * @return a rule that reports the error
+     */
+    private static SqlRule newEmptyStatementError() {
+        return SqlRule.error(".*", "[SQL0104] Token *END was not valid.", "42601", -104);
     }
 
     /**
@@ -261,6 +278,9 @@ public class MockSqliteStore implements AutoCloseable {
      */
     public synchronized SqlRule describe(final String _sql) {
         final String sql = SqlRule.normalize(_sql);
+        if (sql.isEmpty()) {
+            return newEmptyStatementError();
+        }
         if (s_createSchema.matcher(sql).matches() || s_dropSchema.matcher(sql).matches() || s_endTransaction.matcher(sql).matches()) {
             return SqlRule.updateCount(".*", 0);
         }
@@ -287,6 +307,9 @@ public class MockSqliteStore implements AutoCloseable {
      */
     public synchronized SqlRule execute(final String _sql, final JsonArray _parameters) {
         final String sql = SqlRule.normalize(_sql);
+        if (sql.isEmpty()) {
+            return newEmptyStatementError();
+        }
         try {
             final Matcher create = s_createSchema.matcher(sql);
             if (create.matches()) {

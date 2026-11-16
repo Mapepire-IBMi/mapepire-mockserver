@@ -30,7 +30,7 @@ import io.github.mapepire_ibmi.types.QueryOptions;
 import io.github.mapepire_ibmi.types.QueryResult;
 
 /**
- * Drives the mock server's SQLite store through the official Mapepire Java client: real tables, real inserts
+ * Drives the mock server's SQLite database through the official Mapepire Java client: real tables, real inserts
  * with parameter markers, and real queries, alongside the built-in rules. Tagged <code>java-client</code> so it
  * can be skipped with <code>-DexcludedGroups=java-client</code>.
  */
@@ -48,7 +48,7 @@ class SqliteJavaClientTest {
     private SqlJob m_job;
 
     /**
-     * Start one server for the whole class, with the SQLite store enabled.
+     * Start one server for the whole class.
      *
      * @throws IOException
      *             if the server cannot start
@@ -56,7 +56,6 @@ class SqliteJavaClientTest {
     @BeforeAll
     static void startServer() throws IOException {
         final MockServerConfig config = new MockServerConfig().setHost("localhost").setPort(0);
-        config.getDatabase().enableSqlite();
         s_server = new MockServer(config);
         s_server.start();
     }
@@ -64,7 +63,6 @@ class SqliteJavaClientTest {
     @AfterAll
     static void stopServer() {
         s_server.close();
-        s_server.getDatabase().disableSqlite();
     }
 
     /**
@@ -96,7 +94,7 @@ class SqliteJavaClientTest {
     }
 
     /**
-     * Built-in rules still answer their statements when the SQLite store is enabled.
+     * Built-in rules still answer their statements, ahead of the SQLite database.
      *
      * @throws Exception
      *             if the client cannot communicate with the server

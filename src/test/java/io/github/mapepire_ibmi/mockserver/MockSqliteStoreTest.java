@@ -5,10 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.io.IOException;
-import java.io.StringReader;
-
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -33,31 +29,30 @@ class MockSqliteStoreTest {
     @BeforeEach
     void setUp() {
         m_config = new MockServerConfig();
-        m_config.getDatabase().enableSqlite();
         m_session = new MockSession(m_config, new MockTracer("test", null));
     }
 
-    @AfterEach
-    void tearDown() {
-        m_config.getDatabase().disableSqlite();
-    }
-
     /**
-     * Disabling the store brings back the fallback behavior, and enabling it again starts with an empty database.
+     * Each database has its own SQLite data, so tests that use separate servers do not see each other's tables.
      */
     @Test
-    void testDisableDiscardsData() {
+    void testDatabasesAreIsolated() {
         assertTrue(send("{'id':'c','type':'sql','sql':'CREATE TABLE T1 (A INTEGER)'}").get("success").getAsBoolean());
-        m_config.getDatabase().disableSqlite();
-        assertFalse(m_config.getDatabase().isSqliteEnabled());
-        final JsonObject fallback = send("{'id':'s1','type':'sql','sql':'SELECT * FROM T1'}");
-        assertEquals("[SQL0204] Object not found. The mock server has no rule matching this statement.", fallback.get("error").getAsString());
-
-        m_config.getDatabase().enableSqlite();
-        final JsonObject gone = send("{'id':'s2','type':'sql','sql':'SELECT * FROM T1'}");
+        final MockSession other = new MockSession(new MockServerConfig(), new MockTracer("other", null));
+        final JsonObject gone = JsonParser.parseString(other.handle("{\"id\":\"s\",\"type\":\"sql\",\"sql\":\"SELECT * FROM T1\"}")).getAsJsonObject();
         assertFalse(gone.get("success").getAsBoolean());
         assertEquals("42704", gone.get("sql_state").getAsString());
         assertTrue(gone.get("error").getAsString().contains("no such table"), gone.toString());
+    }
+
+    /**
+     * An empty statement fails as it does on Db2.
+     */
+    @Test
+    void testEmptyStatement() {
+        final JsonObject reply = send("{'id':'e','type':'sql','sql':'  ;  '}");
+        assertEquals("[SQL0104] Token *END was not valid.", reply.get("error").getAsString());
+        assertEquals("42601", reply.get("sql_state").getAsString());
     }
 
     /**
@@ -108,21 +103,13 @@ class MockSqliteStoreTest {
     }
 
     /**
-     * A rules file can turn the store on.
-     *
-     * @throws IOException
-     *             if the rules cannot be parsed
+     * <code>QTEMP</code> exists from the start, as it does on IBM i.
      */
     @Test
-    void testRulesFileEnablesSqlite() throws IOException {
-        final MockDatabase database = MockDatabase.fromJson(new StringReader("{\"sqlite\": true}"));
-        try {
-            assertTrue(database.isSqliteEnabled());
-            assertEquals(SqlRule.Kind.RESULT_SET, database.findSqlRule("SELECT 1 AS ONE", null).getKind());
-        } finally {
-            database.disableSqlite();
-        }
-        assertFalse(new MockDatabase().isSqliteEnabled());
+    void testQtempExists() {
+        assertTrue(send("{'id':'1','type':'sql','sql':'CREATE TABLE QTEMP.WORK (A INTEGER)'}").get("success").getAsBoolean());
+        assertEquals(1, send("{'id':'2','type':'sql','sql':'INSERT INTO QTEMP.WORK VALUES (7)'}").get("update_count").getAsLong());
+        assertEquals("42710", send("{'id':'3','type':'sql','sql':'CREATE SCHEMA QTEMP'}").get("sql_state").getAsString());
     }
 
     /**

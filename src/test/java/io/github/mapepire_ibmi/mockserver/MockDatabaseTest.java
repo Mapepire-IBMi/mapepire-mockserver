@@ -61,19 +61,20 @@ class MockDatabaseTest {
     }
 
     /**
-     * Statements that match no rule are classified by their first word.
+     * Statements that match no rule are run against the SQLite database, with errors reported as Db2 would.
      */
     @Test
     void testFallbacks() {
         final MockDatabase db = new MockDatabase(false);
         assertEquals("42704", db.findSqlRule("SELECT * FROM SAMPLE.DEPARTMENT", null).newException().getSqlState());
-        assertEquals("42704", db.findSqlRule("  values 1", null).newException().getSqlState());
+        assertEquals("42601", db.findSqlRule("  values 1", null).newException().getSqlState());
         assertEquals("42704", db.findSqlRule("WITH X AS (SELECT 1 FROM SYSIBM.SYSDUMMY1) SELECT * FROM X", null).newException().getSqlState());
-        assertEquals(SqlRule.Kind.UPDATE, db.findSqlRule("insert into t values(1)", null).getKind());
+        assertEquals("42704", db.findSqlRule("insert into t values(1)", null).newException().getSqlState());
         assertEquals(0, db.findSqlRule("COMMIT", null).getUpdateCount());
         final MockSqlException bad = db.findSqlRule("GIBBERISH", null).newException();
         assertEquals("42601", bad.getSqlState());
-        assertEquals("[SQL0104] Token GIBBERISH was not valid.", bad.getMessage());
+        assertEquals(-104, bad.getSqlRc());
+        assertTrue(bad.getMessage().startsWith("[SQL0104]") && bad.getMessage().contains("GIBBERISH"), bad.getMessage());
         assertEquals("42601", db.findSqlRule("", null).newException().getSqlState());
         assertNull(db.getVisualExplain());
     }

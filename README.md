@@ -17,7 +17,7 @@ on any machine, in CI, or anywhere an IBM i is not available.
 - Requires HTTP Basic authentication on the WebSocket upgrade, as the real server does. Only two built-in accounts are accepted (see [Authentication](#authentication)).
 - Supports every request type the real server handles (see [Protocol coverage](#protocol-coverage)).
 - Built-in sample data (`SAMPLE.DEPARTMENT`, `SYSIBM.SYSDUMMY1`, and more), plus your own rules from a JSON file or from code.
-- Optionally, a real in-memory SQL database ([SQLite](#sqlite-database)) for statements no rule answers, so tests can create schemas and tables, insert rows, and query them.
+- A real in-memory SQL database ([SQLite](#sqlite-database)) for statements no rule answers, so tests can create schemas and tables, insert rows, and query them.
 - Java 8 or later. The only runtime dependencies are Gson, Java-WebSocket (and its no-op SLF4J binding), and the SQLite JDBC driver, all packaged into one jar.
 
 ## Building
@@ -51,7 +51,6 @@ Options:
       --keystore-password <pw>   Keystore password (or the MP_MOCK_KEYSTORE_PASSWORD environment variable)
       --keystore-type <type>     Keystore type (default: PKCS12)
   -r, --rules <file>             JSON file of SQL and CL rules (see below)
-      --sqlite                   Run SQL that matches no rule against an in-memory SQLite database (see below)
   -v, --verbose                  Echo all trace records to standard output
       --version                  Print the version and exit
   -h, --help                     Print this help and exit
@@ -160,11 +159,9 @@ A complete example is in [`examples/rules.json`](examples/rules.json).
 | `output_parms` | The `output_parms` array to return from prepared executions, for stored procedure `CALL`s. |
 | `delay_ms` | Wait this many milliseconds before replying. Useful for testing client timeouts. |
 
-When no rule matches:
-
-- `SELECT`, `VALUES`, and `WITH` statements fail with SQL0204 (`42704`, object not found).
-- Other recognised SQL statements (`INSERT`, `UPDATE`, `DELETE`, `CREATE`, `CALL`, `SET`, `COMMIT`, and so on) succeed with an update count of 0.
-- Anything else fails with SQL0104 (`42601`, token not valid).
+When no rule matches, the statement is run against the mock server's [SQLite database](#sqlite-database). For
+example, a query on a table that doesn't exist fails with SQL0204 (`42704`, object not found), and a statement
+that isn't valid SQL fails with SQL0104 (`42601`, token not valid).
 
 ### CL rule fields
 
@@ -201,42 +198,32 @@ Set `"include_defaults": false` in a rules file to turn them off.
 
 ## SQLite database
 
-By default every answer comes from the rules. To have a real database behind the mock, enable SQLite. SQL
-statements that match **no rule** are then run against an in-memory [SQLite](https://www.sqlite.org/) database
-instead of getting the fallback behavior described above. Rules still come first, so the built-in sample data
-(`SYSIBM.SYSDUMMY1`, `SAMPLE.DEPARTMENT`, and so on) and your own rules keep working.
+Every mock server has a real SQL database behind it. SQL statements that match **no rule** are run against an
+in-memory [SQLite](https://www.sqlite.org/) database, so tests can create schemas and tables, insert rows, and
+query them with ordinary SQL. Rules always come first, so the built-in sample data (`SYSIBM.SYSDUMMY1`,
+`SAMPLE.DEPARTMENT`, and so on) and your own rules work as before.
 
-Enable it in any of these ways:
-
-- On the command line: `--sqlite`
-- In a rules file: `"sqlite": true`
-- In code: `server.getDatabase().enableSqlite()` (and `disableSqlite()` to discard it)
-
-```java
-MockServerConfig config = new MockServerConfig().setPort(0);
-config.getDatabase().enableSqlite();
-try (MockServer server = new MockServer(config)) {
-    server.start();
-    // CREATE SCHEMA MYLIB
-    // CREATE TABLE MYLIB.ITEMS (ID INTEGER PRIMARY KEY, NAME VARCHAR(50))
-    // INSERT INTO MYLIB.ITEMS VALUES (?, ?)   -- prepared, single or batch
-    // SELECT * FROM MYLIB.ITEMS ORDER BY ID    -- fetched in blocks with sqlmore
-}
+```sql
+CREATE SCHEMA MYLIB
+CREATE TABLE MYLIB.ITEMS (ID INTEGER PRIMARY KEY, NAME VARCHAR(50))
+INSERT INTO MYLIB.ITEMS VALUES (?, ?)    -- prepared, single or batch
+SELECT * FROM MYLIB.ITEMS ORDER BY ID     -- fetched in blocks with sqlmore
 ```
 
 How it behaves:
 
 - **Nothing is persisted.** The database exists only in memory. Nothing is written to disk, and all data is gone
-  when `disableSqlite()` is called or the mock server process ends.
-- One database is shared by every connection to the server, so all clients see the same data. Statements run one
-  at a time.
+  when the mock server process ends.
+- Each `MockDatabase` (normally one per server) has its own SQLite database, shared by every connection to that
+  server, so all of its clients see the same data. Statements run one at a time.
+- A `QTEMP` schema always exists, as it does on IBM i. Unlike on IBM i, it's shared by all connections.
 - SQLite has no schemas, so `CREATE SCHEMA name` (or `CREATE COLLECTION`) attaches a new, empty in-memory
   database under that name, and `name.table` then works as it does on Db2. `DROP SCHEMA name` (with optional
   `CASCADE` or `RESTRICT`) discards it and its tables.
-- `COMMIT` and `ROLLBACK` succeed when no transaction is active.
+- `COMMIT` and `ROLLBACK` succeed when no transaction is active, and an empty statement fails with SQL0104.
 - Every other statement is passed to SQLite unchanged, so it must be valid SQLite SQL. Common Db2 column types
-  such as `INTEGER`, `VARCHAR(n)`, `DECIMAL(p, s)`, and `TIMESTAMP` are accepted, but Db2-only syntax and
-  catalog views (`QSYS2`, `SYSIBM` beyond the built-in rules) are not.
+  such as `INTEGER`, `VARCHAR(n)`, `DECIMAL(p, s)`, and `TIMESTAMP` are accepted, but Db2-only syntax (such as
+  `VALUES 1` without parentheses) and catalog views (`QSYS2`, `SYSIBM` beyond the built-in rules) are not.
 - Parameter markers (`?`) and batch execution work as they do with rules.
 - SQLite errors are reported with the closest Db2 SQLSTATE and SQL code: `42704`/SQL0204 for a missing table or
   schema, `42703`/SQL0206 for a missing column, `42710`/SQL0601 for an object that already exists,
@@ -264,7 +251,7 @@ what clients actually receive:
 
 Intentional differences from the real server:
 
-- Unless the [SQLite database](#sqlite-database) is enabled, no SQL is actually executed and every answer comes from the rules. Even with it enabled, statements are run by SQLite, not Db2.
+- Statements that no rule answers are run by [SQLite](#sqlite-database), not Db2, so Db2-specific SQL and catalog views aren't available.
 - Credentials are checked against the two fixed mock accounts, not against IBM i user profiles.
 - Each connection gets a made-up job name like `100000/QUSER/QZDASOINIT`. A new `connect` starts a new job and discards that connection's open statements.
 - Tracing is kept in memory only. With `tracedest` set to `FILE`, the reported path is a placeholder and nothing is written to disk.
