@@ -49,6 +49,7 @@ public class MockServerConfig {
     private MockDatabase m_database = null;
     private String m_host = "0.0.0.0";
     private boolean m_isSecure = true;
+    private boolean m_isSingleMode = false;
     private File m_keyStoreFile = null;
     private char[] m_keyStorePassword = null;
     private String m_keyStoreType = "PKCS12";
@@ -162,6 +163,10 @@ public class MockServerConfig {
         return m_isSecure;
     }
 
+    public boolean isSingleMode() {
+        return m_isSingleMode;
+    }
+
     public MockServerConfig setBuildDate(final String _buildDate) {
         m_buildDate = _buildDate;
         return this;
@@ -228,6 +233,20 @@ public class MockServerConfig {
      */
     public MockServerConfig setSecure(final boolean _isSecure) {
         m_isSecure = _isSecure;
+        return this;
+    }
+
+    /**
+     * Choose single mode, in which {@link MockServerMain} serves one connection over standard input and output
+     * (see {@link MockSingleMode}) instead of starting a WebSocket server. It has no effect on a
+     * {@link MockServer}.
+     *
+     * @param _isSingleMode
+     *            <code>true</code> for single mode
+     * @return this configuration
+     */
+    public MockServerConfig setSingleMode(final boolean _isSingleMode) {
+        m_isSingleMode = _isSingleMode;
         return this;
     }
 

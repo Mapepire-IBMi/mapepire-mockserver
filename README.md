@@ -15,6 +15,7 @@ on any machine, in CI, or anywhere an IBM i is not available.
 - Listens on port **7892** by default, at `wss://<host>:7892/db/`.
 - Uses TLS by default, with a bundled self-signed certificate for `localhost`. Plain `ws://` is available with `--unsecure`.
 - Requires HTTP Basic authentication on the WebSocket upgrade, as the real server does. Only two built-in accounts are accepted (see [Authentication](#authentication)).
+- Also supports the real server's [single mode](#single-mode), which serves one connection over standard input and output.
 - Supports every request type the real server handles (see [Protocol coverage](#protocol-coverage)).
 - Built-in sample data (`SAMPLE.DEPARTMENT`, `SYSIBM.SYSDUMMY1`, and more), plus your own rules from a JSON file or from code.
 - A real in-memory SQL database ([SQLite](#sqlite-database)) for statements no rule answers, so tests can create schemas and tables, insert rows, and query them.
@@ -51,7 +52,9 @@ Options:
       --keystore-password <pw>   Keystore password (or the MP_MOCK_KEYSTORE_PASSWORD environment variable)
       --keystore-type <type>     Keystore type (default: PKCS12)
   -r, --rules <file>             JSON file of SQL and CL rules (see below)
-  -v, --verbose                  Echo all trace records to standard output
+      --single                   Serve one connection over standard input and output instead of a WebSocket
+                                 (no TLS or authentication; network options are ignored)
+  -v, --verbose                  Echo all trace records to standard output (standard error with --single)
       --version                  Print the version and exit
   -h, --help                     Print this help and exit
 ```
@@ -90,6 +93,36 @@ QueryResult<Object> result = job.execute("SELECT * FROM SAMPLE.DEPARTMENT").get(
 ```
 
 To use your own certificate, pass `--keystore`, `--keystore-password`, and, if it isn't PKCS12, `--keystore-type`.
+
+### Single mode
+
+With `--single`, the mock server works like the real server's single mode (`--single`). Instead of
+listening for WebSocket connections, it serves one connection over standard input and output:
+
+```sh
+java -jar target/mapepire-mockserver-<version>-jar-with-dependencies.jar --single
+```
+
+- Each line of standard input is one JSON request, read as UTF-8. Blank lines and lines starting with `//` are
+  skipped without a reply.
+- Each reply is written to standard output as one line of UTF-8 text and flushed straight away. Nothing else is
+  written to standard output. With `--verbose`, trace records go to standard error instead.
+- There is no TLS and no authentication. The port, host, and keystore options are ignored.
+- After replying to an `exit` request, the process exits with status 0. If standard input ends first, it exits
+  with status 12, as the real server does. If reading or writing fails, it exits with status 6.
+- Rules, `--rules`, and the [SQLite database](#sqlite-database) work as they do over a WebSocket.
+
+```text
+$ printf '%s\n' '{"id":"1","type":"sql","sql":"SELECT * FROM SYSIBM.SYSDUMMY1"}' '{"id":"2","type":"exit"}' | java -jar mapepire-mockserver.jar --single
+{"id":"1","has_results":true,"update_count":-1,"metadata":{...},"data":[{"IBMREQD":"Y"}],"is_done":true,"success":true,"execution_time":0}
+{"id":"2","success":true,"execution_time":0}
+```
+
+In code, `MockSingleMode` serves a connection over any pair of streams, without starting a process:
+
+```java
+int status = new MockSingleMode(new MockServerConfig(), requestStream, replyStream).run();
+```
 
 ## Embedding in tests
 
