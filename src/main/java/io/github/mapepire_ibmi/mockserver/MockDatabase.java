@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -31,6 +32,10 @@ import com.google.gson.JsonParser;
  * SQL0204 (object not found), other recognized SQL statements succeed with an update count of zero, and
  * anything else fails with SQL0104 (token not valid). CL commands that match no rule succeed with no messages.
  * <p>
+ * If {@link #enableSqlite()} has been called, SQL statements that match no rule are run against an in-memory
+ * SQLite database (see {@link MockSqliteStore}) instead of getting the fallback behavior. Rules still take
+ * priority, so the built-in sample data (such as <code>SYSIBM.SYSDUMMY1</code>) keeps working.
+ * <p>
  * Rules may be added while the server is running; the rule lists are safe for concurrent use.
  */
 public class MockDatabase {
@@ -46,6 +51,7 @@ public class MockDatabase {
     private final List<ClRule> m_clRules = new CopyOnWriteArrayList<ClRule>();
     private final List<ClRule> m_defaultClRules = new CopyOnWriteArrayList<ClRule>();
     private final List<SqlRule> m_defaultSqlRules = new CopyOnWriteArrayList<SqlRule>();
+    private volatile MockSqliteStore m_sqlite = null;
     private final List<SqlRule> m_sqlRules = new CopyOnWriteArrayList<SqlRule>();
     private volatile MockResultSet m_visualExplain = null;
 
@@ -87,7 +93,8 @@ public class MockDatabase {
 
     /**
      * Create a database from JSON rules. The built-in default rules are included unless the document sets
-     * <code>"include_defaults": false</code>.
+     * <code>"include_defaults": false</code>, and the SQLite store is enabled if it sets
+     * <code>"sqlite": true</code>.
      *
      * @param _reader
      *            the source of the JSON document
@@ -99,6 +106,9 @@ public class MockDatabase {
         final JsonObject config = parseObject(_reader);
         final MockDatabase ret = new MockDatabase(JsonUtils.getBoolean(config, "include_defaults", true));
         ret.addRules(config);
+        if (JsonUtils.getBoolean(config, "sqlite", false)) {
+            ret.enableSqlite();
+        }
         return ret;
     }
 
@@ -248,6 +258,38 @@ public class MockDatabase {
     }
 
     /**
+     * Stop running unmatched statements against SQLite, and discard the SQLite database and everything in it.
+     * Unmatched statements get the fallback behavior again. Does nothing if SQLite is not enabled.
+     */
+    public synchronized void disableSqlite() {
+        final MockSqliteStore sqlite = m_sqlite;
+        m_sqlite = null;
+        if (null != sqlite) {
+            sqlite.close();
+        }
+    }
+
+    /**
+     * Run SQL statements that match no rule against a new, empty, in-memory SQLite database, instead of giving
+     * them the fallback behavior. The database is never written to disk; it is discarded by
+     * {@link #disableSqlite()} or when the JVM exits. Does nothing if SQLite is already enabled.
+     *
+     * @return this database
+     * @throws IllegalStateException
+     *             if SQLite cannot be loaded
+     */
+    public synchronized MockDatabase enableSqlite() {
+        if (null == m_sqlite) {
+            try {
+                m_sqlite = new MockSqliteStore();
+            } catch (final SQLException _e) {
+                throw new IllegalStateException("SQLite could not be started: " + _e.getMessage(), _e);
+            }
+        }
+        return this;
+    }
+
+    /**
      * Find the rule that answers a CL command.
      *
      * @param _command
@@ -289,7 +331,11 @@ public class MockDatabase {
                 }
             }
         }
-        return null != firstConstrained ? firstConstrained : getFallbackRule(sql);
+        if (null != firstConstrained) {
+            return firstConstrained;
+        }
+        final MockSqliteStore sqlite = m_sqlite;
+        return null != sqlite ? sqlite.describe(sql) : getFallbackRule(sql);
     }
 
     /**
@@ -311,7 +357,8 @@ public class MockDatabase {
                 }
             }
         }
-        return getFallbackRule(sql);
+        final MockSqliteStore sqlite = m_sqlite;
+        return null != sqlite ? sqlite.execute(sql, parameters) : getFallbackRule(sql);
     }
 
     /**
@@ -335,6 +382,10 @@ public class MockDatabase {
 
     public MockResultSet getVisualExplain() {
         return m_visualExplain;
+    }
+
+    public boolean isSqliteEnabled() {
+        return null != m_sqlite;
     }
 
     /**

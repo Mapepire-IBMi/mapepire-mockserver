@@ -23,7 +23,8 @@ public final class MockServerMain {
             "      --keystore-password <pw>   Keystore password (or the MP_MOCK_KEYSTORE_PASSWORD environment variable)",
             "      --keystore-type <type>     Keystore type (default: PKCS12)",
             "  -r, --rules <file>             JSON file of SQL and CL rules (see README)",
-            "  -v, --verbose                  Echo all trace records to standard output",
+            "      --sqlite                   Run SQL that matches no rule against an in-memory SQLite database",
+            "  -v, --verbose                Echo all trace records to standard output",
             "      --version                  Print the version and exit",
             "  -h, --help                     Print this help and exit",
             "",
@@ -98,6 +99,7 @@ public final class MockServerMain {
         File keyStoreFile = null;
         String keyStorePassword = _env.get("MP_MOCK_KEYSTORE_PASSWORD");
         String keyStoreType = "PKCS12";
+        boolean isUsingSqlite = false;
         for (int i = 0; i < _args.length; ++i) {
             final String arg = _args[i];
             switch (arg) {
@@ -124,6 +126,9 @@ public final class MockServerMain {
                 case "--rules":
                     ret.setDatabase(MockDatabase.fromFile(new File(getValue(_args, ++i, arg))));
                     break;
+                case "--sqlite":
+                    isUsingSqlite = true;
+                    break;
                 case "-v":
                 case "--verbose":
                     ret.setConsole(_console);
@@ -131,6 +136,10 @@ public final class MockServerMain {
                 default:
                     throw new IllegalArgumentException("Unknown option: " + arg);
             }
+        }
+        if (isUsingSqlite) {
+            // Applied after the loop so that it holds whether it comes before or after --rules
+            ret.getDatabase().enableSqlite();
         }
         if (null != keyStoreFile) {
             if (null == keyStorePassword) {
