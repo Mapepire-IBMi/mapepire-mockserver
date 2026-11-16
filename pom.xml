@@ -4,7 +4,7 @@
 
     <groupId>io.github.mapepire-ibmi</groupId>
     <artifactId>mapepire-mockserver</artifactId>
-    <version>0.0.1</version>
+    <version>0.1.0</version>
     <packaging>jar</packaging>
 
     <name>Mapepire Mock Server</name>
@@ -31,6 +31,7 @@
         <gson.version>2.13.2</gson.version>
         <java-websocket.version>1.6.0</java-websocket.version>
         <slf4j.version>2.0.17</slf4j.version>
+        <sqlite-jdbc.version>3.54.1.0</sqlite-jdbc.version>
         <junit.version>5.13.4</junit.version>
         <mapepire-sdk.version>2.0.0</mapepire-sdk.version>
     </properties>
@@ -47,6 +48,12 @@
             <groupId>org.java-websocket</groupId>
             <artifactId>Java-WebSocket</artifactId>
             <version>${java-websocket.version}</version>
+        </dependency>
+        <!-- In-memory SQL engine for statements no rule answers (see MockSqliteStore) -->
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>${sqlite-jdbc.version}</version>
         </dependency>
         <!-- Java-WebSocket logs through SLF4J; bind it to a no-op logger so it does not print a provider warning -->
         <dependency>

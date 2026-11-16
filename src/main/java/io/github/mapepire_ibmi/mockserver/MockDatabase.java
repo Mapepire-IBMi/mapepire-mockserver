@@ -7,13 +7,11 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
-import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import com.google.gson.JsonArray;
@@ -26,10 +24,11 @@ import com.google.gson.JsonParser;
  * The simulated database: an ordered set of rules that decide how SQL statements and CL commands are answered.
  * <p>
  * Rules added by the user are consulted first, in the order they were added, followed by the built-in default
- * rules (unless those were excluded). The first matching rule wins. When no rule matches a SQL statement, a
- * fallback applies: query statements (<code>SELECT</code>, <code>VALUES</code>, <code>WITH</code>) fail with
- * SQL0204 (object not found), other recognized SQL statements succeed with an update count of zero, and
- * anything else fails with SQL0104 (token not valid). CL commands that match no rule succeed with no messages.
+ * rules (unless those were excluded). The first matching rule wins. SQL statements that match no rule are run
+ * against this database's own in-memory SQLite database (see {@link MockSqliteStore}), so clients can create
+ * schemas and tables and work with real data. Because rules come first, the built-in sample data (such as
+ * <code>SYSIBM.SYSDUMMY1</code>) is still answered by its rules. CL commands that match no rule succeed with no
+ * messages.
  * <p>
  * Rules may be added while the server is running; the rule lists are safe for concurrent use.
  */
@@ -38,14 +37,10 @@ public class MockDatabase {
     /** The classpath location of the built-in default rules. */
     public static final String DEFAULT_RULES_RESOURCE = "/io/github/mapepire_ibmi/mockserver/default-rules.json";
 
-    private static final Set<String> s_nonQueryVerbs = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
-            "ALTER", "CALL", "COMMENT", "COMMIT", "CREATE", "DECLARE", "DELETE", "DROP", "GRANT", "INSERT", "LABEL",
-            "LOCK", "MERGE", "REFRESH", "RELEASE", "RENAME", "REVOKE", "ROLLBACK", "SAVEPOINT", "SET", "TRUNCATE", "UPDATE")));
-    private static final Set<String> s_queryVerbs = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList("SELECT", "VALUES", "WITH")));
-
     private final List<ClRule> m_clRules = new CopyOnWriteArrayList<ClRule>();
     private final List<ClRule> m_defaultClRules = new CopyOnWriteArrayList<ClRule>();
     private final List<SqlRule> m_defaultSqlRules = new CopyOnWriteArrayList<SqlRule>();
+    private MockSqliteStore m_sqlite = null;
     private final List<SqlRule> m_sqlRules = new CopyOnWriteArrayList<SqlRule>();
     private volatile MockResultSet m_visualExplain = null;
 
@@ -100,21 +95,6 @@ public class MockDatabase {
         final MockDatabase ret = new MockDatabase(JsonUtils.getBoolean(config, "include_defaults", true));
         ret.addRules(config);
         return ret;
-    }
-
-    /**
-     * Return the first word of a statement, upper-cased, for classifying statements that match no rule.
-     *
-     * @param _normalizedSql
-     *            the normalized statement
-     * @return the first word, or an empty string if the statement does not start with a letter
-     */
-    private static String getFirstWord(final String _normalizedSql) {
-        int end = 0;
-        while (end < _normalizedSql.length() && Character.isLetter(_normalizedSql.charAt(end))) {
-            ++end;
-        }
-        return _normalizedSql.substring(0, end).toUpperCase(Locale.ROOT);
     }
 
     /**
@@ -229,7 +209,7 @@ public class MockDatabase {
     }
 
     /**
-     * Add a SQL rule. It takes priority over the built-in rules and over the fallback behavior, but not over
+     * Add a SQL rule. It takes priority over the built-in rules and over the SQLite database, but not over
      * rules added before it.
      *
      * @param _rule
@@ -245,6 +225,25 @@ public class MockDatabase {
     public void clearRules() {
         m_sqlRules.clear();
         m_clRules.clear();
+    }
+
+    /**
+     * Get the SQLite database that answers statements no rule matches, opening it the first time it is needed.
+     * It lives in memory only, so it and everything in it are discarded when the JVM exits.
+     *
+     * @return the SQLite database
+     * @throws IllegalStateException
+     *             if SQLite cannot be loaded
+     */
+    private synchronized MockSqliteStore getSqlite() {
+        if (null == m_sqlite) {
+            try {
+                m_sqlite = new MockSqliteStore();
+            } catch (final SQLException _e) {
+                throw new IllegalStateException("SQLite could not be started: " + _e.getMessage(), _e);
+            }
+        }
+        return m_sqlite;
     }
 
     /**
@@ -272,7 +271,7 @@ public class MockDatabase {
      *
      * @param _sql
      *            the statement text
-     * @return the rule; never <code>null</code>, because the fallback behavior applies when nothing matches
+     * @return the rule; never <code>null</code>, because the SQLite database answers when no rule matches
      */
     public SqlRule findRuleForPrepare(final String _sql) {
         final String sql = SqlRule.normalize(_sql);
@@ -289,7 +288,10 @@ public class MockDatabase {
                 }
             }
         }
-        return null != firstConstrained ? firstConstrained : getFallbackRule(sql);
+        if (null != firstConstrained) {
+            return firstConstrained;
+        }
+        return getSqlite().describe(sql);
     }
 
     /**
@@ -299,7 +301,7 @@ public class MockDatabase {
      *            the statement text
      * @param _parameters
      *            the parameter values, or <code>null</code> for a statement run without parameters
-     * @return the rule; never <code>null</code>, because the fallback behavior applies when nothing matches
+     * @return the rule; never <code>null</code>, because the SQLite database answers when no rule matches
      */
     public SqlRule findSqlRule(final String _sql, final JsonArray _parameters) {
         final String sql = SqlRule.normalize(_sql);
@@ -311,26 +313,7 @@ public class MockDatabase {
                 }
             }
         }
-        return getFallbackRule(sql);
-    }
-
-    /**
-     * Build the rule that applies to a statement no rule matched.
-     *
-     * @param _normalizedSql
-     *            the normalized statement
-     * @return the fallback rule
-     */
-    private SqlRule getFallbackRule(final String _normalizedSql) {
-        final String verb = getFirstWord(_normalizedSql);
-        if (s_queryVerbs.contains(verb)) {
-            return SqlRule.error(".*", "[SQL0204] Object not found. The mock server has no rule matching this statement.", "42704", -204);
-        }
-        if (s_nonQueryVerbs.contains(verb)) {
-            return SqlRule.updateCount(".*", 0);
-        }
-        final String token = verb.isEmpty() ? (_normalizedSql.isEmpty() ? "*END" : _normalizedSql.substring(0, 1)) : verb;
-        return SqlRule.error(".*", "[SQL0104] Token " + token + " was not valid.", "42601", -104);
+        return getSqlite().execute(sql, parameters);
     }
 
     public MockResultSet getVisualExplain() {
