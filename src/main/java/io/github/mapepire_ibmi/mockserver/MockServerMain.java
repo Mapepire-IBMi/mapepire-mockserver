@@ -23,18 +23,21 @@ public final class MockServerMain {
             "      --keystore-password <pw>   Keystore password (or the MP_MOCK_KEYSTORE_PASSWORD environment variable)",
             "      --keystore-type <type>     Keystore type (default: PKCS12)",
             "  -r, --rules <file>             JSON file of SQL and CL rules (see README)",
-            "  -v, --verbose                  Echo all trace records to standard output",
+            "      --single                   Serve one connection over standard input and output instead of a WebSocket",
+            "                                 (no TLS or authentication; network options are ignored)",
+            "  -v, --verbose                  Echo all trace records to standard output (standard error with --single)",
             "      --version                  Print the version and exit",
             "  -h, --help                     Print this help and exit",
             "",
-            "Clients must authenticate as MOCK (password: mockingbird) or MOCK2 (password: mockeroni).",
+            "WebSocket clients must authenticate as MOCK (password: mockingbird) or MOCK2 (password: mockeroni).",
             "User profiles are not case-sensitive; passwords are.");
 
     private MockServerMain() {
     }
 
     /**
-     * Start the mock server and keep it running until the JVM is stopped.
+     * Start the mock server and keep it running until the JVM is stopped. With <code>--single</code>, serve one
+     * connection over standard input and output instead, then exit the JVM with the status the real server uses.
      *
      * @param _args
      *            the command-line arguments
@@ -50,14 +53,20 @@ public final class MockServerMain {
             System.out.println("mapepire-mockserver " + defaults.getVersion() + " (built " + defaults.getBuildDate() + ")");
             return;
         }
+        // In single mode, standard output carries the replies, so trace records must go elsewhere
+        final PrintStream console = args.contains("--single") ? System.err : System.out;
         final MockServerConfig config;
         try {
-            config = parseArgs(_args, System.getenv(), System.out);
+            config = parseArgs(_args, System.getenv(), console);
         } catch (final IllegalArgumentException | IOException _e) {
             System.err.println("Error: " + _e.getMessage());
             System.err.println();
             System.err.println(USAGE);
             System.exit(1);
+            return;
+        }
+        if (config.isSingleMode()) {
+            runSingleMode(config);
             return;
         }
         try {
@@ -69,6 +78,25 @@ public final class MockServerMain {
             System.err.println("Error: " + _e.getMessage());
             System.exit(2);
         }
+    }
+
+    /**
+     * Serve one connection over standard input and output, then exit the JVM: with status 0 after an
+     * <code>exit</code> request, 12 if the input ends first, or 6 if reading or writing fails, as the real server
+     * does.
+     *
+     * @param _config
+     *            the configuration
+     */
+    private static void runSingleMode(final MockServerConfig _config) {
+        int status;
+        try {
+            status = new MockSingleMode(_config, System.in, System.out).run();
+        } catch (final IOException _e) {
+            System.err.println("Error: " + _e.getMessage());
+            status = 6;
+        }
+        System.exit(status);
     }
 
     /**
@@ -123,6 +151,9 @@ public final class MockServerMain {
                 case "-r":
                 case "--rules":
                     ret.setDatabase(MockDatabase.fromFile(new File(getValue(_args, ++i, arg))));
+                    break;
+                case "--single":
+                    ret.setSingleMode(true);
                     break;
                 case "-v":
                 case "--verbose":
